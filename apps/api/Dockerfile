@@ -43,6 +43,9 @@ RUN pnpm build
 # ============================================
 FROM base AS runner
 
+# Install wget for healthcheck
+RUN apk add --no-cache wget
+
 # Create non-root user
 RUN addgroup --system --gid 1001 nodejs
 RUN adduser --system --uid 1001 messaging
