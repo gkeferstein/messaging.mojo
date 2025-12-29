@@ -1,0 +1,297 @@
+// Prisma Schema for MOJO Messaging
+// Version: 1.0.0
+// 
+// MOJO Coding Standards: Snake_case für DB-Spalten via @map
+// Siehe: /root/projects/CODING_STANDARDS.md Section 7
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// ENUMS
+// ============================================
+
+enum ConversationType {
+  DIRECT      // 1:1 Direktnachricht
+  GROUP       // Gruppenchat
+  SUPPORT     // Support-Kanal
+  ANNOUNCEMENT // System-Ankündigungen (read-only für die meisten)
+}
+
+enum MessageType {
+  TEXT        // Textnachricht
+  SYSTEM      // Systemnachricht (z.B. "User ist beigetreten")
+  ATTACHMENT  // Dateianhang (Referenz auf externen Storage)
+}
+
+enum ParticipantRole {
+  OWNER       // Ersteller/Besitzer (kann alles)
+  ADMIN       // Administrator (kann Mitglieder verwalten)
+  MEMBER      // Normales Mitglied
+}
+
+enum ContactRequestStatus {
+  PENDING     // Ausstehend
+  ACCEPTED    // Akzeptiert
+  DECLINED    // Abgelehnt
+  EXPIRED     // Abgelaufen
+}
+
+// ============================================
+// CORE MODELS
+// ============================================
+
+/// Konversation - Container für Nachrichten
+model Conversation {
+  id          String           @id @default(uuid())
+  type        ConversationType
+  name        String?          // Nur für Gruppen/Support/Announcements
+  description String?          // Beschreibung für Gruppen
+  avatarUrl   String?          @map("avatar_url")
+  
+  // Metadaten
+  metadata    Json?            // Flexible zusätzliche Daten
+  
+  // Timestamps
+  createdAt   DateTime         @default(now()) @map("created_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+  
+  // Relations
+  participants Participant[]
+  messages     Message[]
+  
+  @@index([type])
+  @@index([createdAt])
+  @@index([updatedAt])
+  @@map("conversations")
+}
+
+/// Teilnehmer einer Konversation
+model Participant {
+  id             String          @id @default(uuid())
+  conversationId String          @map("conversation_id")
+  userId         String          @map("user_id") // Clerk User ID
+  tenantId       String?         @map("tenant_id") // Clerk Org ID
+  
+  role           ParticipantRole @default(MEMBER)
+  
+  // Status
+  joinedAt       DateTime        @default(now()) @map("joined_at")
+  lastReadAt     DateTime?       @map("last_read_at")
+  muted          Boolean         @default(false)
+  mutedUntil     DateTime?       @map("muted_until")
+  
+  // Relations
+  conversation   Conversation    @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  
+  @@unique([conversationId, userId])
+  @@index([userId])
+  @@index([tenantId])
+  @@index([lastReadAt])
+  @@map("participants")
+}
+
+/// Einzelne Nachricht
+model Message {
+  id             String       @id @default(uuid())
+  conversationId String       @map("conversation_id")
+  senderId       String       @map("sender_id") // Clerk User ID
+  
+  content        String       // Nachrichteninhalt
+  type           MessageType  @default(TEXT)
+  
+  // Für Attachments
+  attachmentUrl  String?      @map("attachment_url")
+  attachmentType String?      @map("attachment_type")
+  attachmentName String?      @map("attachment_name")
+  
+  // Reply/Thread Support
+  replyToId      String?      @map("reply_to_id")
+  
+  // Metadaten
+  metadata       Json?
+  
+  // Timestamps
+  createdAt      DateTime     @default(now()) @map("created_at")
+  editedAt       DateTime?    @map("edited_at")
+  deletedAt      DateTime?    @map("deleted_at") // Soft-Delete
+  
+  // Relations
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  replyTo        Message?     @relation("MessageReplies", fields: [replyToId], references: [id])
+  replies        Message[]    @relation("MessageReplies")
+  readReceipts   ReadReceipt[]
+  
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([createdAt])
+  @@index([conversationId, createdAt])
+  @@map("messages")
+}
+
+/// Lesebestätigung für Nachrichten
+model ReadReceipt {
+  id        String   @id @default(uuid())
+  messageId String   @map("message_id")
+  userId    String   @map("user_id") // Clerk User ID
+  readAt    DateTime @default(now()) @map("read_at")
+  
+  // Relations
+  message   Message  @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  
+  @@unique([messageId, userId])
+  @@index([userId])
+  @@map("read_receipts")
+}
+
+// ============================================
+// CONTACT/PERMISSION SYSTEM
+// ============================================
+
+/// Kontaktanfrage (für cross-tenant Kommunikation)
+model ContactRequest {
+  id           String               @id @default(uuid())
+  fromUserId   String               @map("from_user_id") // Clerk User ID
+  fromTenantId String?              @map("from_tenant_id")
+  toUserId     String               @map("to_user_id") // Clerk User ID
+  toTenantId   String?              @map("to_tenant_id")
+  
+  ruleId       String               @map("rule_id") // Welche MessagingRule angewandt
+  status       ContactRequestStatus @default(PENDING)
+  
+  message      String?              // Optionale Nachricht bei Anfrage
+  
+  // Timestamps
+  createdAt    DateTime             @default(now()) @map("created_at")
+  respondedAt  DateTime?            @map("responded_at")
+  expiresAt    DateTime             @map("expires_at")
+  
+  @@unique([fromUserId, toUserId])
+  @@index([toUserId, status])
+  @@index([fromUserId])
+  @@index([expiresAt])
+  @@map("contact_requests")
+}
+
+/// Blockierte User
+model BlockedUser {
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id") // Wer blockiert
+  blockedUserId String   @map("blocked_user_id") // Wen blockiert
+  
+  reason        String?
+  
+  createdAt     DateTime @default(now()) @map("created_at")
+  
+  @@unique([userId, blockedUserId])
+  @@index([blockedUserId])
+  @@map("blocked_users")
+}
+
+// ============================================
+// MESSAGING RULES (Wer darf mit wem?)
+// ============================================
+
+/// Messaging-Regeln (vom Admin konfigurierbar)
+model MessagingRule {
+  id               String   @id @default(uuid())
+  name             String
+  description      String?
+  
+  // Wer darf initiieren? (JSON Array von Rollen)
+  sourceScope      String   @map("source_scope") // 'tenant' | 'platform'
+  sourceRoles      Json     @map("source_roles") // ['owner', 'admin', 'member']
+  
+  // Wer kann empfangen?
+  targetScope      String   @map("target_scope") // 'tenant' | 'platform'
+  targetRoles      Json     @map("target_roles") // ['owner', 'admin', 'member', 'platform_support']
+  
+  // Regeln
+  requireApproval  Boolean  @default(false) @map("require_approval")
+  maxMessagesPerDay Int?    @map("max_messages_per_day") // Rate-Limit pro Tag
+  
+  // Status
+  isActive         Boolean  @default(true) @map("is_active")
+  priority         Int      @default(0) // Höher = wird zuerst geprüft
+  
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+  
+  @@index([isActive, priority])
+  @@map("messaging_rules")
+}
+
+// ============================================
+// USER CACHE (für Performance)
+// ============================================
+
+/// Gecachte User-Daten (von accounts.mojo)
+model UserCache {
+  id           String   @id // Clerk User ID
+  email        String?
+  firstName    String?  @map("first_name")
+  lastName     String?  @map("last_name")
+  avatarUrl    String?  @map("avatar_url")
+  
+  // Plattform-Rolle (von accounts.mojo)
+  platformRole String?  @map("platform_role")
+  
+  // Cache-Metadaten
+  cachedAt     DateTime @default(now()) @map("cached_at")
+  expiresAt    DateTime @map("expires_at")
+  
+  @@index([email])
+  @@index([expiresAt])
+  @@map("user_cache")
+}
+
+// ============================================
+// NOTIFICATIONS
+// ============================================
+
+/// Push-Notification Subscriptions
+model PushSubscription {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id") // Clerk User ID
+  
+  // Web Push Subscription
+  endpoint  String   @unique
+  p256dh    String   // Public Key
+  auth      String   // Auth Secret
+  
+  // User Agent Info
+  userAgent String?  @map("user_agent")
+  
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  
+  @@index([userId])
+  @@map("push_subscriptions")
+}
+
+/// User-Präferenzen für Benachrichtigungen
+model NotificationPreference {
+  id              String   @id @default(uuid())
+  userId          String   @unique @map("user_id") // Clerk User ID
+  
+  // Kanäle
+  inApp           Boolean  @default(true) @map("in_app")
+  push            Boolean  @default(false)
+  email           Boolean  @default(false)
+  
+  // Einstellungen
+  emailDigest     String   @default("daily") @map("email_digest") // 'immediate' | 'daily' | 'weekly' | 'never'
+  quietHoursStart String?  @map("quiet_hours_start") // z.B. "22:00"
+  quietHoursEnd   String?  @map("quiet_hours_end") // z.B. "08:00"
+  
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  
+  @@map("notification_preferences")
+}

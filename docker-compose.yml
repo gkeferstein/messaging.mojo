@@ -1,0 +1,100 @@
+services:
+  # ============================================
+  # API Service
+  # ============================================
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+    container_name: mojo-messaging
+    restart: unless-stopped
+    environment:
+      PORT: 3020
+      HOST: 0.0.0.0
+      DATABASE_URL: postgresql://messaging:${POSTGRES_PASSWORD:-messaging_password}@db:5432/messaging_db
+      REDIS_URL: redis://redis:6379
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
+      CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY}
+      ACCOUNTS_API_URL: ${ACCOUNTS_API_URL:-https://accounts.mojo-institut.de/api/v1}
+      ACCOUNTS_INTERNAL_TOKEN: ${ACCOUNTS_INTERNAL_TOKEN}
+      CORS_ORIGINS: ${CORS_ORIGINS:-*}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-100}
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    expose:
+      - "3020"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - messaging-internal
+      - mojo-network
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3020/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    # Traefik routing is configured via file provider in /root/infrastructure/traefik/config/routers.yml
+    # Service name: mojo-messaging:3020
+
+  # ============================================
+  # PostgreSQL Database
+  # ============================================
+  db:
+    image: postgres:16-alpine
+    container_name: messaging-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: messaging
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-messaging_password}
+      POSTGRES_DB: messaging_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - messaging-internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U messaging -d messaging_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ============================================
+  # Redis (Cache & PubSub)
+  # ============================================
+  redis:
+    image: redis:7-alpine
+    container_name: messaging-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - messaging-internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+# ============================================
+# Volumes
+# ============================================
+volumes:
+  postgres_data:
+    name: messaging-postgres-data
+  redis_data:
+    name: messaging-redis-data
+
+# ============================================
+# Networks
+# ============================================
+networks:
+  messaging-internal:
+    name: messaging-internal
+  mojo-network:
+    external: true

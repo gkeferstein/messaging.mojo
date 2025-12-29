@@ -1,0 +1,55 @@
+# messaging.mojo - Cursor Rules
+
+> **Globale Standards:** `/root/projects/CODING_STANDARDS.md`
+
+## Projekt-Info
+
+- **Typ:** Zentrales Messaging-System
+- **Domain:** messaging.mojo-institut.de
+- **Stack:** Fastify + Socket.io + Prisma + Redis
+
+## Architektur
+
+```
+apps/api/
+├── src/
+│   ├── routes/      # REST API
+│   ├── websocket/   # Socket.io Handler
+│   └── services/    # Business Logic
+└── prisma/          # Database Schema
+```
+
+## Integration (WICHTIG!)
+
+Dieses System ist ein **eigenständiger Service**.
+Apps integrieren über API, NICHT über shared packages.
+
+**Dokumentation für integrierende Apps:**
+- `docs/api-reference.md` - REST API
+- `docs/websocket-events.md` - WebSocket Events
+- `docs/widget-standards.md` - Widget UI Standards
+- `docs/types.ts` - TypeScript Types
+
+## Wichtige Patterns
+
+1. **Graceful Degradation:** Widget darf Host-App NIEMALS crashen
+2. **Permission System:** Regeln in `MessagingRule` Tabelle
+3. **WebSocket:** Typing + Presence via Redis
+
+## Auth
+
+- Clerk JWT für alle Endpoints (außer Health)
+- Optional: `X-Tenant-ID` Header
+
+## Befehle
+
+```bash
+make dev      # Entwicklung starten
+make migrate  # Migrationen
+make logs     # Logs anzeigen
+```
+
+## Cursor Behavior
+
+- Code direkt in Dateien schreiben
+- Keine Bestätigung vor Änderungen

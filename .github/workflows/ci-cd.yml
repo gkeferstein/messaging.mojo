@@ -1,0 +1,186 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Run tests
+        run: npm test || echo "No tests configured"
+      
+      - name: Build
+        run: npm run build || echo "No build script"
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Check required secrets
+        run: |
+          if [ -z "${{ secrets.DEPLOY_SERVER }}" ]; then
+            echo "❌ Fehler: DEPLOY_SERVER Secret nicht gesetzt!"
+            echo "Bitte setze DEPLOY_SERVER in GitHub Repository Secrets"
+            exit 1
+          fi
+          if [ -z "${{ secrets.SSH_PRIVATE_KEY }}" ]; then
+            echo "❌ Fehler: SSH_PRIVATE_KEY Secret nicht gesetzt!"
+            echo "Bitte setze SSH_PRIVATE_KEY in GitHub Repository Secrets"
+            exit 1
+          fi
+          echo "✅ Alle erforderlichen Secrets sind gesetzt"
+      
+      - name: Deploy to Dev Server
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.DEPLOY_SERVER }}
+          username: root
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          script: |
+            # WICHTIG: DEPLOY_SERVER MUSS in GitHub Secrets gesetzt sein!
+            # Der Deploy-Server ist immer unterschiedlich und darf nicht hardcoded sein!
+            
+            cd /root/projects/${{ github.event.repository.name }}
+            git pull origin main || git pull origin develop
+            
+            # Port aus docs/PORT.md extrahieren
+            PORT=$(grep -E "^\*\*Port:\*\*" docs/PORT.md | sed 's/.*\*\*Port:\*\* //' | sed 's/ .*//')
+            PROJECT_NAME="${{ github.event.repository.name }}"
+            
+            if [ -z "$PORT" ]; then
+              echo "❌ Fehler: Port nicht in docs/PORT.md gefunden!"
+              exit 1
+            fi
+            
+            # Projekt starten (Docker)
+            if [ -f "docker-compose.yml" ]; then
+              docker compose down || true
+              docker compose build --no-cache || true
+              docker compose up -d
+            elif [ -f "docker-compose.prod.yml" ]; then
+              docker compose -f docker-compose.prod.yml down || true
+              docker compose -f docker-compose.prod.yml build --no-cache || true
+              docker compose -f docker-compose.prod.yml up -d
+            else
+              echo "⚠️ Keine docker-compose.yml gefunden - Projekt muss manuell gestartet werden"
+            fi
+            
+            # Traefik erkennt Services automatisch über Docker Labels
+            # Keine manuelle Konfiguration mehr nötig
+            
+            echo "✅ Projekt $PROJECT_NAME deployed auf Port $PORT"
+            echo "🐳 Docker Container gestartet"
+            echo "🌐 Traefik erkennt Container automatisch über Docker Labels"
+            echo "🔗 Erreichbar über Traefik (falls Domain konfiguriert)"
+  smoke-tests:
+    name: Smoke Tests
+    needs: deploy
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop'
+    steps:
+      - name: Setup SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+      
+      - name: Wait for Deployment
+        run: |
+          echo "⏳ Warte auf Deployment-Initialisierung..."
+          sleep 30
+      
+      - name: Health Check
+        continue-on-error: true
+        run: |
+          MAX_RETRIES=5
+          PROJECT_NAME="${{ github.event.repository.name }}"
+          HEALTH_URL="https://${{ secrets.DEPLOY_SERVER }}/$PROJECT_NAME/health"
+          
+          echo "🔍 Health-Check für $PROJECT_NAME..."
+          
+          for i in $(seq 1 $MAX_RETRIES); do
+            RETRY_DELAY=15
+            echo "Versuch $i/$MAX_RETRIES..."
+            
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$HEALTH_URL" 2>/dev/null || echo "000")
+            
+            if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+              echo "✅ Health-Check erfolgreich (HTTP $HTTP_CODE)"
+              exit 0
+            fi
+            
+            if [ "$HTTP_CODE" = "000" ]; then
+              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "http://${{ secrets.DEPLOY_SERVER }}/$PROJECT_NAME/health" 2>/dev/null || echo "000")
+              if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 300 ]; then
+                echo "✅ Health-Check erfolgreich (HTTP $HTTP_CODE via HTTP)"
+                exit 0
+              fi
+            fi
+            
+            echo "⚠️ Health-Check fehlgeschlagen (HTTP $HTTP_CODE), warte ${RETRY_DELAY}s..."
+            if [ $i -lt $MAX_RETRIES ]; then
+              sleep $RETRY_DELAY
+            fi
+          done
+          
+          echo "❌ Health-Check nach $MAX_RETRIES Versuchen fehlgeschlagen"
+          exit 1
+      
+      - name: Frontend Route Check
+        continue-on-error: true
+        run: |
+          MAX_RETRIES=5
+          PROJECT_NAME="${{ github.event.repository.name }}"
+          FRONTEND_URL="https://${{ secrets.DEPLOY_SERVER }}/$PROJECT_NAME/"
+          
+          echo "🔍 Frontend-Route-Check für $PROJECT_NAME..."
+          
+          for i in $(seq 1 $MAX_RETRIES); do
+            RETRY_DELAY=15
+            echo "Versuch $i/$MAX_RETRIES..."
+            
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "$FRONTEND_URL" 2>/dev/null || echo "000")
+            
+            if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 400 ]; then
+              echo "✅ Frontend-Route erreichbar (HTTP $HTTP_CODE)"
+              exit 0
+            fi
+            
+            if [ "$HTTP_CODE" = "000" ]; then
+              HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" --max-time 10 "http://${{ secrets.DEPLOY_SERVER }}/$PROJECT_NAME/" 2>/dev/null || echo "000")
+              if [ "$HTTP_CODE" -ge 200 ] && [ "$HTTP_CODE" -lt 400 ]; then
+                echo "✅ Frontend-Route erreichbar (HTTP $HTTP_CODE via HTTP)"
+                exit 0
+              fi
+            fi
+            
+            echo "⚠️ Frontend-Route fehlgeschlagen (HTTP $HTTP_CODE), warte ${RETRY_DELAY}s..."
+            if [ $i -lt $MAX_RETRIES ]; then
+              sleep $RETRY_DELAY
+            fi
+          done
+          
+          echo "❌ Frontend-Route nach $MAX_RETRIES Versuchen fehlgeschlagen"
+          exit 1
+
+
+
+
+

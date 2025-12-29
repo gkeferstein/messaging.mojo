@@ -1,0 +1,15 @@
+{
+  "name": "messaging.mojo",
+  "version": "1.0.0",
+  "description": "messaging.mojo - MOJO Dev Server Projekt",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "echo \"No tests configured\" && exit 0"
+  },
+  "keywords": ["mojo", "dev-server"],
+  "author": "MOJO Institut",
+  "license": "MIT"
+}

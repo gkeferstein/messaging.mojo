@@ -1,0 +1,29 @@
+# ============================================
+# MOJO Messaging API - Development Dockerfile
+# ============================================
+
+FROM node:22-alpine
+
+# Install dependencies for native modules
+RUN apk add --no-cache libc6-compat openssl
+
+WORKDIR /app
+
+# Copy package files
+COPY package.json package-lock.json* ./
+
+# Install all dependencies (including devDependencies)
+RUN npm ci
+
+# Copy application code
+COPY . .
+
+# Generate Prisma Client
+RUN npx prisma generate
+
+EXPOSE 3020
+
+# Run with hot-reload
+CMD ["npm", "run", "dev"]
+
+
