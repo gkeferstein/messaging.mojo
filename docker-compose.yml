@@ -15,7 +15,7 @@ services:
       REDIS_URL: redis://redis:6379
       CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
       CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY}
-      ACCOUNTS_API_URL: ${ACCOUNTS_API_URL:-https://accounts.mojo-institut.de/api/v1}
+      ACCOUNTS_API_URL: ${ACCOUNTS_API_URL:-https://account.mojo-institut.de/api}
       ACCOUNTS_INTERNAL_TOKEN: ${ACCOUNTS_INTERNAL_TOKEN}
       CORS_ORIGINS: ${CORS_ORIGINS:-*}
       RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-100}
@@ -29,7 +29,6 @@ services:
       redis:
         condition: service_healthy
     networks:
-      - messaging-internal
       - mojo-network
     healthcheck:
       test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3020/api/v1/health"]
@@ -37,8 +36,23 @@ services:
       timeout: 10s
       retries: 3
       start_period: 40s
-    # Traefik routing is configured via file provider in /root/infrastructure/traefik/config/routers.yml
-    # Service name: mojo-messaging:3020
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=mojo-network"
+      # PROD
+      - "traefik.http.routers.messaging.rule=Host(`messaging.mojo-institut.de`)"
+      - "traefik.http.routers.messaging.entrypoints=websecure"
+      - "traefik.http.routers.messaging.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.messaging.service=messaging"
+      - "traefik.http.routers.messaging.middlewares=security-headers@file,cors@file"
+      # DEV
+      - "traefik.http.routers.messaging-dev.rule=Host(`dev.messaging.mojo-institut.de`)"
+      - "traefik.http.routers.messaging-dev.entrypoints=websecure"
+      - "traefik.http.routers.messaging-dev.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.messaging-dev.service=messaging"
+      - "traefik.http.routers.messaging-dev.middlewares=security-headers@file,cors@file"
+      # Service
+      - "traefik.http.services.messaging.loadbalancer.server.port=3020"
 
   # ============================================
   # PostgreSQL Database
@@ -52,9 +66,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-messaging_password}
       POSTGRES_DB: messaging_db
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - messaging-postgres-data:/var/lib/postgresql/data
     networks:
-      - messaging-internal
+      - mojo-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U messaging -d messaging_db"]
       interval: 10s
@@ -71,9 +85,9 @@ services:
     restart: unless-stopped
     command: redis-server --appendonly yes
     volumes:
-      - redis_data:/data
+      - messaging-redis-data:/data
     networks:
-      - messaging-internal
+      - mojo-network
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -85,16 +99,15 @@ services:
 # Volumes
 # ============================================
 volumes:
-  postgres_data:
+  messaging-postgres-data:
     name: messaging-postgres-data
-  redis_data:
+  messaging-redis-data:
     name: messaging-redis-data
 
 # ============================================
 # Networks
 # ============================================
 networks:
-  messaging-internal:
-    name: messaging-internal
   mojo-network:
+    name: mojo-network
     external: true
