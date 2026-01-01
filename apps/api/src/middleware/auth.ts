@@ -1,8 +1,8 @@
-import { verifyToken } from '@clerk/backend';
 import { FastifyRequest, FastifyReply } from 'fastify';
+import { verifyToken } from '@clerk/backend';
 import { env } from '../config/env.js';
-import { UnauthorizedError } from '../lib/errors.js';
 import { sendUnauthorized } from '../lib/response.js';
+import { UnauthorizedError } from '../lib/errors.js';
 
 // ============================================
 // TYPES (nach MOJO Coding Standards Section 3)

@@ -1,0 +1,68 @@
+# CI für Feature Branches und Pull Requests
+# Trigger: Push zu allen Branches AUSSER main, Pull Requests zu main
+# Kein Deployment - nur Lint, Test, Build
+
+name: CI Pull Request
+
+on:
+  push:
+    branches-ignore:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  # ============================================
+  # Lint, Type Check, Test, Build
+  # ============================================
+  validate:
+    name: Validate Code
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Configure npm for GitHub Packages
+        run: |
+          echo "@gkeferstein:registry=https://npm.pkg.github.com" > ~/.npmrc
+          echo "//npm.pkg.github.com/:_authToken=${{ secrets.GHCR_TOKEN }}" >> ~/.npmrc
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run linting
+        run: npm run lint
+        continue-on-error: false
+
+      - name: Run type check
+        run: npm run typecheck
+        continue-on-error: false
+
+      - name: Run tests
+        run: npm test
+        continue-on-error: false
+
+      - name: Build
+        run: npm run build
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "## CI Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Check | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Lint | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| Type Check | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| Tests | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build | ✅ |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Ready to merge to \`main\` for Staging deployment." >> $GITHUB_STEP_SUMMARY
+

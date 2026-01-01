@@ -1,9 +1,9 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import { NotFoundError, ForbiddenError, ValidationError } from '../lib/errors.js';
-import { sendSuccess, sendCreated } from '../lib/response.js';
 import { authenticate } from '../middleware/auth.js';
 import { messagingService } from '../services/messaging.js';
+import { sendSuccess, sendCreated } from '../lib/response.js';
+import { NotFoundError, ForbiddenError, ValidationError } from '../lib/errors.js';
 
 // ============================================
 // SCHEMAS

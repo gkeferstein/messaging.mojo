@@ -1,55 +1,47 @@
 # messaging.mojo - Cursor Rules
 
-> **Globale Standards:** `/root/projects/CODING_STANDARDS.md`
+## ⚠️ PFLICHT: Platform Standards
 
-## Projekt-Info
+Dieses Projekt MUSS sich an die Standards in `platform.mojo` halten:
 
-- **Typ:** Zentrales Messaging-System
-- **Domain:** messaging.mojo-institut.de
-- **Stack:** Fastify + Socket.io + Prisma + Redis
+- **Ökosystem:** /root/projects/platform.mojo/docs/MOJO_ECOSYSTEM.md
+- **Coding Standards:** /root/projects/platform.mojo/docs/CODING_STANDARDS.md
+- **Staging Konvention:** /root/projects/platform.mojo/docs/STAGING_SERVER_CONVENTION.md
+- **Lokale Entwicklung:** /root/projects/platform.mojo/docs/LOCAL_DEVELOPMENT.md
+- **Brand Guidelines:** /root/projects/platform.mojo/docs/brand/
 
-## Architektur
+## URLs
 
-```
-apps/api/
-├── src/
-│   ├── routes/      # REST API
-│   ├── websocket/   # Socket.io Handler
-│   └── services/    # Business Logic
-└── prisma/          # Database Schema
-```
+- **Staging:** https://messaging.staging.mojo-institut.de
+- **Production:** https://messaging.mojo-institut.de
 
-## Integration (WICHTIG!)
+## Code-Prinzipien
 
-Dieses System ist ein **eigenständiger Service**.
-Apps integrieren über API, NICHT über shared packages.
+- TypeScript ES6+ mit striktem Typing
+- DRY - Keine Code-Duplikation
+- Einfachheit vor Komplexität
+- Health Check Endpoint ist PFLICHT (`/health`)
 
-**Dokumentation für integrierende Apps:**
-- `docs/api-reference.md` - REST API
-- `docs/websocket-events.md` - WebSocket Events
-- `docs/widget-standards.md` - Widget UI Standards
-- `docs/types.ts` - TypeScript Types
+## Design System
 
-## Wichtige Patterns
+- `@gkeferstein/design` Package verwenden
+- MOJO-Terminologie beachten (siehe MOJO_GLOSSARY.md)
+- Voice & Tone Guidelines befolgen
 
-1. **Graceful Degradation:** Widget darf Host-App NIEMALS crashen
-2. **Permission System:** Regeln in `MessagingRule` Tabelle
-3. **WebSocket:** Typing + Presence via Redis
+## CI/CD
 
-## Auth
+- Push zu `main` → Staging Deployment
+- Release Tag `v*.*.*` → Production Deployment
+- Feature Branches → CI ohne Deployment (ci-pr.yml)
 
-- Clerk JWT für alle Endpoints (außer Health)
-- Optional: `X-Tenant-ID` Header
+## GitHub Secrets (PFLICHT!)
 
-## Befehle
+- `STAGING_SERVER` - Staging Server
+- `STAGING_SSH_KEY` - SSH Key für Staging
+- `PRODUCTION_SERVER` - Production Server
+- `PRODUCTION_SSH_KEY` - SSH Key für Production
+- `GHCR_TOKEN` - GitHub Container Registry
 
-```bash
-make dev      # Entwicklung starten
-make migrate  # Migrationen
-make logs     # Logs anzeigen
-```
+## Referenzen
 
-## Cursor Behavior
-
-- Code direkt in Dateien schreiben
-- Keine Bestätigung vor Änderungen
+Repository: https://github.com/gkeferstein/platform.mojo

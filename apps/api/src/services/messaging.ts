@@ -1,7 +1,7 @@
-import { ConversationType, MessageType, ParticipantRole } from '@prisma/client';
 import prisma from '../lib/prisma.js';
 import { presence } from '../lib/redis.js';
 import { permissionService, UserContext } from './permissions.js';
+import { ConversationType, MessageType, ParticipantRole } from '@prisma/client';
 
 // ============================================
 // TYPES

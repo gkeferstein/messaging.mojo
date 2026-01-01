@@ -1,5 +1,9 @@
 import { FastifyInstance } from 'fastify';
 import { z } from 'zod';
+import { authenticate } from '../middleware/auth.js';
+import prisma from '../lib/prisma.js';
+import { permissionService } from '../services/permissions.js';
+import { sendSuccess, sendCreated } from '../lib/response.js';
 import {
   NotFoundError,
   ForbiddenError,
@@ -8,10 +12,6 @@ import {
   ContactRequestRequiredError,
   ContactRequestPendingError,
 } from '../lib/errors.js';
-import prisma from '../lib/prisma.js';
-import { sendSuccess, sendCreated } from '../lib/response.js';
-import { authenticate } from '../middleware/auth.js';
-import { permissionService } from '../services/permissions.js';
 
 // ============================================
 // SCHEMAS

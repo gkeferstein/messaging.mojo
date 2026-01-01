@@ -197,6 +197,7 @@ Dieses System ist als **eigenständiger Service** konzipiert. Apps integrieren e
 ### Integration Guide
 
 Siehe [docs/widget-standards.md](docs/widget-standards.md) für:
+
 - Widget-Implementierungsrichtlinien
 - TypeScript Types zum Copy-Paste
 - UI/UX Standards
@@ -249,6 +250,7 @@ docker compose exec api npx prisma migrate deploy
 ### Traefik
 
 Das Projekt ist für Traefik konfiguriert:
+
 - Domain: `messaging.mojo-institut.de`
 - SSL: Let's Encrypt (automatisch)
 - WebSocket: Unterstützt
